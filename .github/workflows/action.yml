@@ -9,11 +9,15 @@ on:
 
 permissions:
   contents: read
-  security-events: write
   actions: read
+  security-events: write
+
+env:
+  PYTHON_VERSION: "3.11"
+  COVERAGE_MIN: "90"
 
 jobs:
-  build-and-test:
+  build-test-quality:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -24,7 +28,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
         run: |
@@ -35,16 +39,54 @@ jobs:
       - name: Check Python syntax
         run: python -m compileall -q .
 
-      - name: Run unit tests
-        run: python -m unittest discover -s tests/unit -p "test_*.py" -v
-
-      - name: Run web tests
-        run: python -m unittest discover -s tests/web -p "test_*.py" -v
-
-      - name: Run test coverage
+      - name: Run tests with coverage quality gate
         run: |
-          python -m coverage run --source=. -m unittest discover -s tests/unit -p "test_*.py" -v
-          python -m coverage run --source=. --append -m unittest discover -s tests/web -p "test_*.py" -v
-          python -m coverage report -m
+          python -m coverage erase
+          python -m coverage run --rcfile=.coveragerc -m unittest discover -s tests/unit -p "test_*.py" -v
+          python -m coverage run --rcfile=.coveragerc --append -m unittest discover -s tests/web -p "test_*.py" -v
+          python -m coverage report --rcfile=.coveragerc --fail-under=${COVERAGE_MIN} -m
+          python -m coverage xml --rcfile=.coveragerc -o coverage.xml
+          python -m coverage html --rcfile=.coveragerc -d htmlcov
+
+      - name: Upload coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            coverage.xml
+            htmlcov/
+
+  sonarqube:
+    name: SonarQube Analysis
+    needs: build-test-quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: ${{ needs.build-test-quality.result == 'success' && secrets.SONAR_TOKEN != '' && vars.SONAR_HOST_URL != '' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download coverage artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-reports
+          path: .
+
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+
+      - name: SonarQube Quality Gate
+        uses: SonarSource/sonarqube-quality-gate-action@master
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
 
 
