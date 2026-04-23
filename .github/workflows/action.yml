@@ -62,34 +62,49 @@ jobs:
     needs: build-test-quality
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    if: ${{ needs.build-test-quality.result == 'success' && secrets.SONAR_TOKEN != '' && vars.SONAR_ORGANIZATION != '' }}
+    if: ${{ needs.build-test-quality.result == 'success' && vars.SONAR_ORGANIZATION != '' }}
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
     steps:
+      - name: Check Sonar token availability
+        id: sonar_token
+        shell: bash
+        run: |
+          if [ -n "${SONAR_TOKEN}" ]; then
+            echo "has_token=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_token=false" >> "$GITHUB_OUTPUT"
+            echo "SONAR_TOKEN is not set. SonarCloud steps are skipped."
+          fi
+
       - name: Checkout code
+        if: ${{ steps.sonar_token.outputs.has_token == 'true' }}
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Download coverage artifacts
+        if: ${{ steps.sonar_token.outputs.has_token == 'true' }}
         uses: actions/download-artifact@v4
         with:
           name: coverage-reports
           path: .
 
       - name: SonarQube Scan
+        if: ${{ steps.sonar_token.outputs.has_token == 'true' }}
         uses: SonarSource/sonarqube-scan-action@v5
         with:
           args: >-
             -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}
             -Dsonar.host.url=https://sonarcloud.io
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
       - name: SonarQube Quality Gate
+        if: ${{ steps.sonar_token.outputs.has_token == 'true' }}
         uses: SonarSource/sonarqube-quality-gate-action@master
         timeout-minutes: 5
         env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
 
 
