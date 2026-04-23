@@ -3,99 +3,79 @@ name: CI - Python
 on:
   workflow_dispatch:
   push:
-    branches: [ master, main, develop ]
+    branches: [master, main, develop]
   pull_request:
-    branches: [ master, main, develop ]
+    branches: [master, main, develop]
 
 permissions:
   contents: read
-  actions: read
-  security-events: write
 
 env:
   PYTHON_VERSION: "3.11"
   COVERAGE_MIN: "90"
 
 jobs:
-  build-test-quality:
+  test-and-coverage:
+    name: Tests & Coverage
     runs-on: ubuntu-latest
-    timeout-minutes: 30
 
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install dependencies
+      - name: Install deps
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           python -m pip install coverage
 
-      - name: Check Python syntax
+      - name: Syntax check
         run: python -m compileall -q .
 
-      - name: Run tests with coverage quality gate
+      - name: Run tests and enforce coverage
         run: |
           python -m coverage erase
           python -m coverage run --rcfile=.coveragerc -m unittest discover -s tests/unit -p "test_*.py" -v
           python -m coverage run --rcfile=.coveragerc --append -m unittest discover -s tests/web -p "test_*.py" -v
           python -m coverage report --rcfile=.coveragerc --fail-under=${COVERAGE_MIN} -m
           python -m coverage xml --rcfile=.coveragerc -o coverage.xml
-          python -m coverage html --rcfile=.coveragerc -d htmlcov
 
-      - name: Upload coverage artifacts
-        if: always()
+      - name: Upload coverage report
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-reports
-          path: |
-            coverage.xml
-            htmlcov/
+          name: coverage-report
+          path: coverage.xml
 
-  sonarqube:
-    name: SonarCloud Analysis
-    needs: build-test-quality
+  sonarcloud:
+    name: SonarCloud
+    needs: test-and-coverage
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    if: ${{ needs.build-test-quality.result == 'success' && vars.SONAR_ORGANIZATION != '' && vars.SONAR_PROJECT_KEY != '' }}
-    env:
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    if: ${{ vars.SONAR_ORGANIZATION != '' && vars.SONAR_PROJECT_KEY != '' }}
 
     steps:
-      - name: Check Sonar token availability
-        id: sonar_token
-        shell: bash
-        run: |
-          if [ -n "${SONAR_TOKEN}" ]; then
-            echo "has_token=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_token=false" >> "$GITHUB_OUTPUT"
-            echo "SONAR_TOKEN is not set. SonarCloud steps are skipped."
-          fi
-
-      - name: Checkout code
-        if: ${{ steps.sonar_token.outputs.has_token == 'true' }}
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Download coverage artifacts
-        if: ${{ steps.sonar_token.outputs.has_token == 'true' }}
+      - name: Download coverage report
         uses: actions/download-artifact@v4
         with:
-          name: coverage-reports
+          name: coverage-report
           path: .
 
-      - name: SonarCloud Scan (with Quality Gate)
-        if: ${{ steps.sonar_token.outputs.has_token == 'true' }}
+      - name: SonarCloud scan
         uses: SonarSource/sonarqube-scan-action@v6
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
           args: >-
+            -Dsonar.projectBaseDir=.
             -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }}
             -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}
             -Dsonar.host.url=https://sonarcloud.io
