@@ -91,20 +91,14 @@ jobs:
           name: coverage-reports
           path: .
 
-      - name: SonarQube Scan
+      - name: SonarCloud Scan (with Quality Gate)
         if: ${{ steps.sonar_token.outputs.has_token == 'true' }}
         uses: SonarSource/sonarqube-scan-action@v5
         with:
           args: >-
             -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}
             -Dsonar.host.url=https://sonarcloud.io
-
-      - name: SonarQube Quality Gate
-        if: ${{ steps.sonar_token.outputs.has_token == 'true' }}
-        uses: SonarSource/sonarqube-quality-gate-action@master
-        timeout-minutes: 5
-        env:
-          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
-          SONAR_HOST_URL: https://sonarcloud.io
+            -Dsonar.qualitygate.wait=true
+            -Dsonar.qualitygate.timeout=300
 
 
