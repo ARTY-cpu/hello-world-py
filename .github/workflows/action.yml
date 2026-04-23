@@ -62,7 +62,7 @@ jobs:
     needs: build-test-quality
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    if: ${{ needs.build-test-quality.result == 'success' && vars.SONAR_ORGANIZATION != '' }}
+    if: ${{ needs.build-test-quality.result == 'success' && vars.SONAR_ORGANIZATION != '' && vars.SONAR_PROJECT_KEY != '' }}
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
@@ -93,11 +93,13 @@ jobs:
 
       - name: SonarCloud Scan (with Quality Gate)
         if: ${{ steps.sonar_token.outputs.has_token == 'true' }}
-        uses: SonarSource/sonarqube-scan-action@v5
+        uses: SonarSource/sonarqube-scan-action@v6
         with:
           args: >-
+            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }}
             -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}
             -Dsonar.host.url=https://sonarcloud.io
+            -Dsonar.python.version=3.11
             -Dsonar.qualitygate.wait=true
             -Dsonar.qualitygate.timeout=300
 
